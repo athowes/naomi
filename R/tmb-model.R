@@ -6,7 +6,8 @@
 #'
 #' @seealso [select_naomi_data]
 #' @export
-prepare_tmb_inputs <- function(naomi_data) {
+prepare_tmb_inputs <- function(naomi_data,
+                               artattend_method = "attend") {
 
   stopifnot(is(naomi_data, "naomi_data"))
   stopifnot(is(naomi_data, "naomi_mf"))
@@ -73,7 +74,7 @@ prepare_tmb_inputs <- function(naomi_data) {
 
     survey_dat$attend_area_id <- survey_dat$area_id
     survey_dat$artnum_idx <- seq_len(nrow(survey_dat))
-    
+
     Amat <- create_artattend_Amat(
       survey_dat,
       age_groups = naomi_data$age_groups,
@@ -97,11 +98,23 @@ prepare_tmb_inputs <- function(naomi_data) {
   A_artcov <- create_survey_Amat(naomi_data$artcov_dat)
   A_vls <- create_survey_Amat(naomi_data$vls_dat)
   A_recent <- create_survey_Amat(naomi_data$recent_dat)
-  
-  ## ART attendance aggregation
 
-  Xgamma <- sparse_model_matrix(~0 + attend_area_idf:as.integer(jstar != 1),
+  ## ART attendance aggregation
+  # Creates a model matrix that will assign log_or_offsets to the correct
+  # district pairing. Any district where jstar = 1 (home district) will not get a parameter
+  # assigned to it.
+
+  if(artattend_method == "attend") {
+    Xgamma <- sparse_model_matrix(~0 + attend_area_idf:as.integer(jstar != 1),
+                                  naomi_data$mf_artattend)
+  }
+
+  if(artattend_method == "reside") {
+    Xgamma <- sparse_model_matrix(~0 + reside_area_idf:as.integer(jstar != 1),
                                 naomi_data$mf_artattend)
+  }
+
+
   if(naomi_data$artattend_t2) {
     Xgamma_t2 <- Xgamma
   } else {
@@ -193,7 +206,6 @@ prepare_tmb_inputs <- function(naomi_data) {
     f_alpha_xs <- ~0 + area_idf
   }
 
-  
   ## If no ART data at both time points, do not fit a change in ART coverage. Use
   ## logit difference in ART coverage from Spectrum.
   ## T1 ART data may be either survey or programme
@@ -201,7 +213,7 @@ prepare_tmb_inputs <- function(naomi_data) {
 
   has_t1_art <- nrow(naomi_data$artcov_dat) > 0 | nrow(naomi_data$artnum_t1_dat) > 0
   has_t2_art <- nrow(naomi_data$artnum_t2_dat) > 0
-  
+
   if( !has_t1_art | !has_t2_art ) {
     f_alpha_t2 <- ~0
     f_alpha_xt <- ~0
@@ -391,9 +403,9 @@ prepare_tmb_inputs <- function(naomi_data) {
     beta_anc_alpha = numeric(1),
     beta_anc_rho_t2 = numeric(1),
     beta_anc_alpha_t2 = numeric(1),
-    u_rho_x = numeric(ncol(dtmb$Z_rho_x)),    
+    u_rho_x = numeric(ncol(dtmb$Z_rho_x)),
     us_rho_x = numeric(ncol(dtmb$Z_rho_x)),
-    u_rho_xs = numeric(ncol(dtmb$Z_rho_xs)),    
+    u_rho_xs = numeric(ncol(dtmb$Z_rho_xs)),
     us_rho_xs = numeric(ncol(dtmb$Z_rho_xs)),
     u_rho_a = numeric(ncol(dtmb$Z_rho_a)),
     u_rho_as = numeric(ncol(dtmb$Z_rho_as)),
@@ -404,9 +416,9 @@ prepare_tmb_inputs <- function(naomi_data) {
     ui_anc_rho_xt = numeric(ncol(dtmb$Z_ancrho_x)),
     ui_anc_alpha_xt = numeric(ncol(dtmb$Z_ancalpha_x)),
     ##
-    u_alpha_x = numeric(ncol(dtmb$Z_alpha_x)),    
+    u_alpha_x = numeric(ncol(dtmb$Z_alpha_x)),
     us_alpha_x = numeric(ncol(dtmb$Z_alpha_x)),
-    u_alpha_xs = numeric(ncol(dtmb$Z_alpha_xs)),    
+    u_alpha_xs = numeric(ncol(dtmb$Z_alpha_xs)),
     us_alpha_xs = numeric(ncol(dtmb$Z_alpha_xs)),
     u_alpha_a = numeric(ncol(dtmb$Z_alpha_a)),
     u_alpha_as = numeric(ncol(dtmb$Z_alpha_as)),
@@ -744,7 +756,7 @@ create_artattend_Amat <- function(artnum_df, age_groups, sexes, area_aggregation
            )
 
   A_artnum <- dplyr::left_join(A_artnum, df_art_attend, by = by_vars)
-  
+
   A_artnum <- A_artnum %>%
     {
       Matrix::spMatrix(nrow(artnum_df),

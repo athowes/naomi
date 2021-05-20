@@ -390,11 +390,11 @@ Type objective_function<Type>::operator() ()
 
   // * HIV incidence model *
 
-  PARAMETER(OmegaT_raw);
+  PARAMETER(OmegaT_raw); // Mean duartion of recent infection (MDRI)
   val -= dnorm(OmegaT_raw, Type(0.0), Type(1.0), true);
-  Type OmegaT = OmegaT0 + OmegaT_raw * sigma_OmegaT;
+  Type OmegaT = OmegaT0 + OmegaT_raw * sigma_OmegaT; //
 
-  PARAMETER(log_betaT);
+  PARAMETER(log_betaT); //False recent ratio 
   val -= dnorm(exp(log_betaT), Type(0.0), Type(1.0), true) + log_betaT;
   Type betaT = betaT0 + exp(log_betaT) * sigma_betaT;
 
@@ -402,7 +402,7 @@ Type objective_function<Type>::operator() ()
   val -= dnorm(logit_nu_raw, Type(0.0), Type(1.0), true);
   Type nu = invlogit(logit_nu_mean + logit_nu_raw * logit_nu_sd);
 
-  PARAMETER(log_sigma_lambda_x);
+  PARAMETER(log_sigma_lambda_x); //District incidence rate
   Type sigma_lambda_x(exp(log_sigma_lambda_x));
   val -= dnorm(sigma_lambda_x, Type(0.0), Type(1.0), true) + log_sigma_lambda_x;
 
@@ -470,13 +470,13 @@ Type objective_function<Type>::operator() ()
 
   // HIV prevalence time 1
   
-  vector<Type> mu_rho(X_rho * beta_rho +
+  vector<Type> mu_rho(X_rho * beta_rho +  // Z random effect design matrix
                       logit_rho_offset +
-                      Z_rho_x * u_rho_x +
-                      Z_rho_xs * u_rho_xs +
-                      Z_rho_a * u_rho_a +
-                      Z_rho_as * u_rho_as +
-		      Z_rho_xa * u_rho_xa);
+                      Z_rho_x * u_rho_x + // u_rho_x distict random effect
+                      Z_rho_xs * u_rho_xs + //u_rho_xs: district level prev (male)
+                      Z_rho_a * u_rho_a + //u_rho_a: female pattern of prev
+                      Z_rho_as * u_rho_as + //u_rho_as: diff betwen male and female prev by age 
+		      Z_rho_xa * u_rho_xa); //u_rho_xa: variation in adult vs. pead prev 
 
   // paediatric prevalence
 
@@ -490,7 +490,7 @@ Type objective_function<Type>::operator() ()
 
   // ART coverage time 1
   
-  vector<Type> mu_alpha(X_alpha * beta_alpha +
+  vector<Type> mu_alpha(X_alpha * beta_alpha +  // Same as above 
                         logit_alpha_offset +
                         Z_alpha_x * u_alpha_x +
                         Z_alpha_xs * u_alpha_xs +
@@ -509,23 +509,24 @@ Type objective_function<Type>::operator() ()
   vector<Type> plhiv_15to49_t1(X_15to49 * plhiv_t1);
   vector<Type> rho_15to49_t1(plhiv_15to49_t1 / (X_15to49 * population_t1));
   vector<Type> alpha_15to49_t1((X_15to49 * artnum_t1) / plhiv_15to49_t1);
-
-  vector<Type> mu_lambda_t1(X_lambda * beta_lambda + log_lambda_t1_offset +
+  // Incidence
+  vector<Type> mu_lambda_t1(X_lambda * beta_lambda + log_lambda_t1_offset + // beta_lambda: ave trasmission rate
                             Z_x * vector<Type>(log(rho_15to49_t1) + log(1.0 - omega * alpha_15to49_t1)) +
-                            Z_lambda_x * ui_lambda_x);
-
+                            Z_lambda_x * ui_lambda_x); //random effct for variation in district level incidence rate 
+  // most of these not estimated if there is no recency testing data
   vector<Type> lambda_t1(exp(mu_lambda_t1));
   vector<Type> infections_t1(lambda_t1 * (population_t1 - plhiv_t1));
 
 
   // Projection from t1 to t2
-
-  vector<Type> mu_alpha_t2(mu_alpha + logit_alpha_t1t2_offset +
-                           X_alpha_t2 * beta_alpha_t2 +
-                           Z_alpha_xt * u_alpha_xt +
-                           Z_alpha_xat * u_alpha_xat);
+  // assume that change in ART cov is the same for men and women 
+ // 
+  vector<Type> mu_alpha_t2(mu_alpha + logit_alpha_t1t2_offset + 
+                           X_alpha_t2 * beta_alpha_t2 + //beta_alpha_t2 : ave change in ARt cov between T1 and T2 for all x
+                           Z_alpha_xt * u_alpha_xt + //chnage over time to vary between districts 
+                           Z_alpha_xat * u_alpha_xat); // change in time to vary between distcrit adults vs. paeds
   vector<Type> alpha_t2(invlogit(mu_alpha_t2));
-
+  // # infection calculated: prob infection * susceptible population
   vector<Type> infections_t1t2((1 - exp(-lambda_t1 * projection_duration)) * (population_t1 - plhiv_t1));
   vector<Type> plhiv_t2(Lproj_hivpop * plhiv_t1 + Lproj_incid * infections_t1t2 + Lproj_paed * plhiv_t1);
 
@@ -538,7 +539,7 @@ Type objective_function<Type>::operator() ()
   vector<Type> rho_15to49_t2(plhiv_15to49_t2 / (X_15to49 * population_t2));
   vector<Type> alpha_15to49_t2((X_15to49 * artnum_t2) / plhiv_15to49_t2);
 
-  vector<Type> mu_lambda_t2(X_lambda * beta_lambda + log_lambda_t2_offset +
+  vector<Type> mu_lambda_t2(X_lambda * beta_lambda + log_lambda_t2_offset + // imcidence rate at T2
                             Z_x * vector<Type>(log(rho_15to49_t2) + log(1.0 - omega * alpha_15to49_t2)) +
                             Z_lambda_x * ui_lambda_x);
 
@@ -573,26 +574,26 @@ Type objective_function<Type>::operator() ()
   //       of female age 15-49 age groups. But I don't know if it would be
   //       meaningfully more efficient.
 
-  vector<Type> mu_asfr(X_asfr * beta_asfr +
-		       Z_asfr_x * ui_asfr_x);
+  vector<Type> mu_asfr(X_asfr * beta_asfr + // mu_asfr = log age specific fertility rate
+		       Z_asfr_x * ui_asfr_x);       // beta_asfr (offset): diff between est asfr vs spectrum asfr // ui_asfr_x; x level difference - offset parameter
 		       
-  vector<Type> mu_anc_rho_t1(mu_rho +
+  vector<Type> mu_anc_rho_t1(mu_rho + // logit HIV prev in preg women (age/sex (births to men = 0)/district)
 			     logit_anc_rho_t1_offset + 
 			     X_ancrho * beta_anc_rho +
 			     Z_ancrho_x * ui_anc_rho_x);
   vector<Type> anc_rho_t1(invlogit(mu_anc_rho_t1));
   
-  vector<Type> mu_anc_alpha_t1(mu_alpha +
+  vector<Type> mu_anc_alpha_t1(mu_alpha +  // logit ART covergae in pregnant women (T1)
 			       logit_anc_alpha_t1_offset + 
 			       X_ancalpha * beta_anc_alpha +
 			       Z_ancalpha_x * ui_anc_alpha_x);
   vector<Type> anc_alpha_t1(invlogit(mu_anc_alpha_t1));
   
-  vector<Type> anc_clients_t1(population_t1 * exp(log_asfr_t1_offset + mu_asfr));
+  vector<Type> anc_clients_t1(population_t1 * exp(log_asfr_t1_offset + mu_asfr)); //log_asfr_t1_offset: log of spectrum asfr from spectrum (will be replaced with Oli's analysis)
   vector<Type> anc_plhiv_t1(anc_clients_t1 * anc_rho_t1);
   vector<Type> anc_already_art_t1(anc_plhiv_t1 * anc_alpha_t1);
 
-  vector<Type> mu_anc_rho_t2(logit(rho_t2) +
+  vector<Type> mu_anc_rho_t2(logit(rho_t2) + // logit ART cov in pregnant women
 			     logit_anc_rho_t2_offset + 
 			     X_ancrho * vector<Type>(beta_anc_rho + beta_anc_rho_t2) +
 			     Z_ancrho_x * vector<Type>(ui_anc_rho_x + ui_anc_rho_xt));
@@ -628,9 +629,9 @@ Type objective_function<Type>::operator() ()
   
   // * ART attendance model *
 
-  vector<Type> gamma_art(exp(Xgamma * log_or_gamma + log_gamma_offset));
+  vector<Type> gamma_art(exp(Xgamma * log_or_gamma + log_gamma_offset)); //x level random effects 
   int cum_nb = 0;
-  for(int i = 0; i < n_nb.size(); i++){
+  for(int i = 0; i < n_nb.size(); i++){                    //normalising ART attendance prob to sum to 1 (multinomial logistic model)
     Type cum_exp_or_gamma_i = 0.0;
     for(int j = 0; j < n_nb[i]+1; j++)
       cum_exp_or_gamma_i += gamma_art[cum_nb + i + j];
@@ -638,18 +639,19 @@ Type objective_function<Type>::operator() ()
       gamma_art[cum_nb + i + j] /= cum_exp_or_gamma_i;
     cum_nb += n_nb[i];
   }
+  // return a prob for each district that must sum to 1
 
-  vector<Type> prop_art_ij_t1((Xart_idx * prop_art_t1) * (Xart_gamma * gamma_art));
-  vector<Type> population_ij_t1(Xart_idx * population_t1);
+  vector<Type> prop_art_ij_t1((Xart_idx * prop_art_t1) * (Xart_gamma * gamma_art)); //prob of attending treatement between xi and xj, return proportion total pop in i that get treatemnt in j 
+  vector<Type> population_ij_t1(Xart_idx * population_t1); //pop denominator
 
-  vector<Type> artnum_ij_t1(population_ij_t1 * prop_art_ij_t1);
-  vector<Type> A_j_t1(A_artattend_t1 * artnum_ij_t1);
-  vector<Type> sd_A_j_t1(A_artattend_t1 * vector<Type>(population_ij_t1 * prop_art_ij_t1 * (1 - prop_art_ij_t1)));
+  vector<Type> artnum_ij_t1(population_ij_t1 * prop_art_ij_t1); // num people in i who get treatment in j 
+  vector<Type> A_j_t1(A_artattend_t1 * artnum_ij_t1); // summed ove rj = # pl recieving tx in j. A_artattend_t1// aggregates age/sex to 15+ M/F
+  vector<Type> sd_A_j_t1(A_artattend_t1 * vector<Type>(population_ij_t1 * prop_art_ij_t1 * (1 - prop_art_ij_t1))); // expected std dev for this count based on normal dist to sum of binomials
   sd_A_j_t1 = sd_A_j_t1.sqrt();
 
-  val -= sum(dnorm(x_artnum_t1, A_j_t1, sd_A_j_t1, true));
+  val -= sum(dnorm(x_artnum_t1, A_j_t1, sd_A_j_t1, true)); //likelihood 
 
-  vector<Type> gamma_art_t2(exp(Xgamma * log_or_gamma + Xgamma_t2 * log_or_gamma_t1t2 + log_gamma_offset));
+  vector<Type> gamma_art_t2(exp(Xgamma * log_or_gamma + Xgamma_t2 * log_or_gamma_t1t2 + log_gamma_offset)); //log_or_gamma_t1t2 time varying ART attendance parameter
   cum_nb = 0;
   for(int i = 0; i < n_nb.size(); i++){
     Type cum_exp_or_gamma_i = 0.0;
